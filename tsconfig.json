@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    /* Specify the path to .tsbuildinfo incremental compilation file. */
+    "target": "ES6",
+    /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "lib": [
+      "ESNext"
+    ],
+    /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+    "module": "commonjs",
+    /* Specify what module code is generated. */
+    "baseUrl": "./",
+    /* Specify the base directory to resolve non-relative module names. */
+    "paths": {
+      "~": [
+        "./src"
+      ]
+    },
+    "outDir": "./dist",
+    /* Specify an output folder for all emitted files. */
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    /* Enable error reporting for expressions and declarations with an implied 'any' type. */
+    "skipLibCheck": true
+  },
+  "include": [
+    "./src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
