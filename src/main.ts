@@ -1,4 +1,5 @@
 import dotenv from 'dotenv-safe';
+import { proxyChecker } from './proxy_checker';
 
 // It is necessary that process.env is available in all files.
 dotenv.config();

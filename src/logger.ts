@@ -1,3 +1,5 @@
+import * as util from 'util';
+
 export class Logger {
     private _location: string;
 
@@ -5,7 +7,17 @@ export class Logger {
         this._location = location;
     }
 
-    public log(message: string): void {
-        console.log(`[${ this._location }]: ${ message }`);
+    public log(object: object): void
+    public log(message: string): void
+    public log(message: object | string): void {
+        let msg;
+
+        if (typeof message === 'string') {
+            msg = message;
+        } else if (typeof message === 'object') {
+            msg = util.inspect(message, { depth: 3, colors: true });
+        }
+
+        console.log(`[${ this._location }]: ${ msg }`);
     }
 }
