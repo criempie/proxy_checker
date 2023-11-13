@@ -1,8 +1,18 @@
 import { Echo, EchoResponse } from './echo/Echo';
 import { PostmanEcho } from './echo/postman.echo';
 import { Logger } from './logger';
-import { Proxy, ProxyCheckResult } from './types';
 import { parseProxyToUrl } from './utils';
+
+export interface Proxy {
+    protocol: 'http' | 'https' | 'socks4' | 'socks5',
+    host: string,
+    port: number,
+}
+
+export interface ProxyCheckResult {
+    availability: boolean,
+    // anonymous: boolean,
+}
 
 const logger = new Logger('ProxyChecker');
 
@@ -17,34 +27,34 @@ export async function testProxy(proxy: Proxy): Promise<ProxyCheckResult> {
             echo_data = await echo.byHttp({
                 proxy,
                 timeout: 4000,
-            })
+            });
         } else if (proxy.protocol === 'https') {
             echo_data = await echo.byHttps({
                 proxy,
                 timeout: 4000,
-            })
+            });
         } else {
             echo_data = await echo.bySocks({
                 proxy,
                 timeout: 4000,
-            })
+            });
         }
 
-        logger.log(`Proxy ${ parseProxyToUrl(proxy) } is working`);
-        logger.log(`proxy headers: ${ echo_data.headers }`);
+        logger.happy(`Proxy ${ Logger.makeUnderline(parseProxyToUrl(proxy)) } is working`);
+        logger.happy('proxy headers:', echo_data.headers, '\n');
 
         return {
             availability: true,
-        }
+        };
 
     } catch (e) {
         if (e instanceof Error) {
-            logger.log(`Proxy ${ parseProxyToUrl(proxy) } does not working`);
-            logger.log(`${ e.message }`);
+            logger.error(`Proxy ${ Logger.makeUnderline(parseProxyToUrl(proxy)) } does not working`);
+            logger.error(e.message.trim(), '\n');
         } else throw e;
 
         return {
             availability: false,
-        }
+        };
     }
 }

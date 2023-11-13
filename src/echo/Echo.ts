@@ -1,4 +1,4 @@
-import { AxiosRequestConfig } from 'axios/index';
+import { AxiosRequestConfig } from 'axios';
 
 export interface EchoResponse {
     headers: Record<string, string>,

@@ -1,5 +1,5 @@
 import { AxiosProxyConfig } from 'axios';
-import { Proxy } from './types';
+import { Proxy } from './proxy_checker';
 
 export function parseProxyToUrl(proxy: Proxy): string {
     return `${ proxy.protocol }://${ proxy.host }:${ proxy.port }`;

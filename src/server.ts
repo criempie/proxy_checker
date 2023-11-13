@@ -2,49 +2,40 @@ import bodyParser from 'body-parser';
 import express, { Request } from 'express';
 import { env } from 'process';
 import { Logger } from './logger';
-import { testProxy } from './proxy_checker';
-import { ProxyCheckResult } from './types';
+import { ProxyCheckResult, testProxy } from './proxy_checker';
 import { parseUrlToProxy } from './utils';
 
-const instance = express();
-const logger = new Logger('server');
+export function start() {
+    const instance = express();
+    const logger = new Logger('Server');
 
-instance.use(bodyParser.json());
+    instance.use(bodyParser.json());
 
-instance.get('/', (req, res) => {
-    res.status(200);
-    res.send('hi');
-});
-
-instance.post('/check', async (req: Request<{}, any, string[]>, res) => {
-    const promises: Promise<ProxyCheckResult>[] = [];
-
-    req.body.forEach((url) => {
-        try {
-            const proxy = parseUrlToProxy(url);
-            promises.push(testProxy(proxy));
-        } catch (e) {}
-
+    instance.get('/', (req, res) => {
+        res.status(200);
+        res.send('hi');
     });
 
-    const result = await Promise.allSettled(promises);
+    instance.post('/check', async (req: Request<{}, any, string[]>, res) => {
+        const promises: Promise<ProxyCheckResult>[] = [];
 
-    res.status(200);
-    res.appendHeader('content-type', 'application/json');
+        req.body.forEach((url) => {
+            try {
+                const proxy = parseUrlToProxy(url);
+                promises.push(testProxy(proxy));
+            } catch (e) {}
 
-    res.send(result);
-});
+        });
 
-instance.listen(+env.PORT, () => {
-    logger.log(`The server is running on port ${ env.PORT }.`);
-    logger.log(`It is assumed that the URL is ${ getServerUrl() }`);
-});
+        const result = await Promise.allSettled(promises);
 
-function getServerUrl(customProtocol?: string): string {
-    return `${ customProtocol ?? env.PROTOCOL }://${ env.HOST }:${ env.PORT }/`;
+        res.status(200);
+        res.appendHeader('content-type', 'application/json');
+
+        res.send(result);
+    });
+
+    instance.listen(+env.PORT, () => {
+        logger.log(`The server is running on port ${ env.PORT }`);
+    });
 }
-
-export const server = {
-    instance,
-    getServerUrl,
-};
