@@ -1,3 +1,4 @@
+import axios from 'axios';
 import bodyParser from 'body-parser';
 import express, { Request } from 'express';
 import { env } from 'process';
@@ -8,11 +9,24 @@ import { parseUrlToProxy } from './utils';
 export function start() {
     const instance = express();
     const logger = new Logger('Server');
+    let ip: string | undefined;
+
+    getIp()
+    .then((_ip) => {
+        ip = _ip;
+        logger.log(`Current ip is ${ Logger.makeUnderline(_ip) }`);
+    })
+    .catch((e) => {
+        if (e instanceof Error) {
+            logger.error(`Error during ip detection: ${ e.message }`);
+        } else throw e;
+    });
 
     instance.use(bodyParser.json());
 
     instance.get('/', (req, res) => {
         res.status(200);
+
         res.send('hi');
     });
 
@@ -36,6 +50,11 @@ export function start() {
     });
 
     instance.listen(+env.PORT, () => {
-        logger.log(`The server is running on port ${ env.PORT }`);
+        logger.log(`The server is running on port ${ Logger.makeUnderline(env.PORT) }`);
     });
+}
+
+async function getIp(): Promise<string> {
+    return axios.get<{ ip: string }>('https://api.ipify.org?format=json')
+    .then((r) => r.data.ip);
 }
