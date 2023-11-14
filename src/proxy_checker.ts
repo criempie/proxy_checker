@@ -11,6 +11,7 @@ export interface Proxy {
 
 export interface ProxyCheckResult {
     availability: boolean,
+    proxy: Proxy,
     // anonymous: boolean,
 }
 
@@ -41,10 +42,11 @@ export async function testProxy(proxy: Proxy): Promise<ProxyCheckResult> {
         }
 
         logger.happy(`Proxy ${ Logger.makeUnderline(parseProxyToUrl(proxy)) } is working`);
-        logger.happy('proxy headers:', echo_data.headers, '\n');
+        logger.happy('headers:', echo_data.headers, '\n');
 
         return {
             availability: true,
+            proxy,
         };
 
     } catch (e) {
@@ -55,6 +57,7 @@ export async function testProxy(proxy: Proxy): Promise<ProxyCheckResult> {
 
         return {
             availability: false,
+            proxy,
         };
     }
 }
