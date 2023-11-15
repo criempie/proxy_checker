@@ -1,4 +1,3 @@
-import axios from 'axios';
 import dotenv from 'dotenv-safe';
 
 // It is necessary that process.env is available in all files.
