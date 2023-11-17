@@ -16,9 +16,6 @@
     "paths": {
       "~/*": [
         "./src/*"
-      ],
-      "~/files/*": [
-        "./files/*"
       ]
     },
     "outDir": "./dist",
@@ -36,5 +33,10 @@
   "exclude": [
     "node_modules",
     "dist"
-  ]
+  ],
+  "ts-node": {
+    "require": [
+      "tsconfig-paths/register"
+    ]
+  }
 }
