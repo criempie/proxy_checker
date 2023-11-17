@@ -5,14 +5,20 @@ import express, { Request } from 'express';
 import fs from 'fs';
 import { env } from 'process';
 import readline from 'readline';
+import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
 import { Logger } from './logger';
 import { Proxy, ProxyCheckResult, testProxy } from './proxy_checker';
 import { parseProxyToUrl, parseUrlToProxy } from './utils';
 
 interface CheckProxyResponse {
-    working: string[],
-    not_working: string[],
-    errored: string[],
+    working: Proxy[],
+    not_working: Proxy[],
+    errored: Proxy[],
+}
+
+interface ProxiesWithTime {
+    last_update: Date,
+    proxies: Proxy[],
 }
 
 const FILES_ROOT = appRootPath.path + '/files/';
@@ -21,6 +27,11 @@ export function start() {
     const instance = express();
     const logger = new Logger('Server');
     let ip: string | undefined;
+
+    let cached_proxies: ProxiesWithTime = {
+        last_update: new Date(0),
+        proxies: [],
+    };
 
     // getIp()
     // .then((_ip) => {
@@ -42,49 +53,101 @@ export function start() {
     });
 
     instance.post('/check', async (req: Request<{}, CheckProxyResponse, string[]>, res) => {
-        const promises: Promise<ProxyCheckResult>[] = [];
-
-        const working: string[] = [];
-        const not_working: string[] = [];
-        const errored: string[] = [];
-
-        req.body.forEach((url) => {
-            try {
-                const proxy = parseUrlToProxy(url);
-                promises.push(testProxy(proxy));
-            } catch (e) {
-                errored.push(url);
-            }
-
-        });
-
-        await Promise.allSettled(promises).then((promises) => {
-            promises.forEach((p) => {
-                if (p.status === 'fulfilled') {
-                    if (p.value.availability) working.push(parseProxyToUrl(p.value.proxy));
-                    else not_working.push(parseProxyToUrl(p.value.proxy));
-                }
-            });
-        });
+        const result = await validateProxies(req.body.map(parseUrlToProxy));
 
         res.status(200);
         res.appendHeader('content-type', 'application/json');
 
-        res.send({
-            working,
-            not_working,
-            errored,
-        });
+        res.send(result);
+    });
+
+    instance.get('/proxies', async (req, res) => {
+        const proxies = await update(cached_proxies);
+        if (cached_proxies !== proxies) {
+            saveProxiesToFile(proxies.proxies);
+            cached_proxies = proxies;
+        }
+
+        res.status(200);
+        res.appendHeader('content-type', 'application/json');
+
+        res.send(proxies);
     });
 
     instance.listen(+env.PORT, async () => {
         logger.log(`The server is running on port ${ Logger.makeUnderline(env.PORT) }`);
+
+        cached_proxies = await readProxiesFromFile();
     });
 }
 
 async function getIp(): Promise<string> {
     return axios.get<{ ip: string }>('https://api.ipify.org?format=json')
     .then((r) => r.data.ip);
+}
+
+async function validateProxies(proxies: Proxy[]): Promise<{
+    working: Proxy[],
+    not_working: Proxy[],
+    errored: Proxy[]
+}> {
+    const promises: Promise<ProxyCheckResult>[] = [];
+
+    const working: Proxy[] = [];
+    const not_working: Proxy[] = [];
+    const errored: Proxy[] = [];
+
+    proxies.forEach((proxy) => {
+        promises.push(testProxy(proxy));
+    });
+
+    await Promise.allSettled(promises).then((promises) => {
+        promises.forEach((p) => {
+            if (p.status === 'fulfilled') {
+                if (p.value.availability) working.push(p.value.proxy);
+                else not_working.push(p.value.proxy);
+            }
+        });
+    });
+
+    return {
+        working,
+        not_working,
+        errored,
+    };
+}
+
+async function update(cached: ProxiesWithTime): Promise<ProxiesWithTime> {
+    const TIME_TO_OUTDATE = 1000 * 60 * 4;
+
+    // Check that the cached proxies is not outdated.
+    if (Date.now() - cached.last_update.getTime() > TIME_TO_OUTDATE) {
+        const proxies_to_validate: Proxy[] = [];
+        let last_update: Date | undefined;
+
+        await Promise.allSettled([
+            readProxiesFromFile()
+            .then((data) => {
+                proxies_to_validate.push(...data.proxies);
+                last_update = data.last_update;
+            }),
+
+            FreeProxyListNet.load()
+            .then((proxies) => {
+                proxies_to_validate.push(...proxies);
+                last_update = new Date();
+            }),
+        ]);
+
+        const result = await validateProxies(proxies_to_validate);
+
+        return {
+            last_update: last_update ?? new Date(0),
+            proxies: result.working,
+        };
+    }
+
+    return cached;
 }
 
 function saveProxiesToFile(proxies: Proxy[]): void {
@@ -107,7 +170,7 @@ function saveProxiesToFile(proxies: Proxy[]): void {
     writer.end();
 }
 
-function readProxiesFromFile(): Promise<{ last_update: Date, proxies: Proxy[] }> {
+function readProxiesFromFile(): Promise<ProxiesWithTime> {
     /**
      * It is necessary, because using the usual "return" function "gets stuck" when an error occurs.
      * With Promise reject, the function terminates on error.

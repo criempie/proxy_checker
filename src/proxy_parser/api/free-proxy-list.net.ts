@@ -8,22 +8,22 @@ export class FreeProxyListNet {
     private static _url = 'https://free-proxy-list.net/';
     private static _logger = new Logger('parser free-proxy-list.net');
 
-    public static async load(): Promise<Proxy[] | false> {
-        try {
-            const page = await FreeProxyListNet._fetchPage();
-
+    public static async load(): Promise<Proxy[]> {
+        return FreeProxyListNet._fetchPage()
+        .then((page) => {
             return FreeProxyListNet._parsePage(page);
-        } catch (e) {
+        })
+        .catch((e) => {
             if (e instanceof Error) {
                 FreeProxyListNet._logger.error(e.message);
+            }
 
-                return false;
-            } else throw e;
-        }
+            throw e;
+        });
 
     }
 
-    private static async _parsePage(page_string: string): Promise<Proxy[] | false> {
+    private static async _parsePage(page_string: string): Promise<Proxy[]> {
         try {
             const page = new JSDOM(page_string);
 
@@ -58,9 +58,9 @@ export class FreeProxyListNet {
         } catch (e) {
             if (e instanceof Error) {
                 FreeProxyListNet._logger.error(e.message);
+            }
 
-                return false;
-            } else throw e;
+            throw e;
         }
     }
 
