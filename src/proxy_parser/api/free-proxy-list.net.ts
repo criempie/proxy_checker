@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import { Logger } from '~/logger';
-import { Proxy } from '~/proxy_checker';
+import { Proxy } from '~/types';
 import { common_headers } from '../common_headers';
 
 export class FreeProxyListNet {

@@ -1,5 +1,5 @@
 import { AxiosProxyConfig } from 'axios';
-import { Proxy } from './proxy_checker';
+import { Proxy } from '~/types';
 
 export function parseProxyToUrl(proxy: Proxy): string {
     return `${ proxy.protocol }://${ proxy.host }:${ proxy.port }`;
@@ -52,4 +52,12 @@ export function axiosProxyConfigToProxy(proxyConfig: AxiosProxyConfig): Proxy {
 
 export function axiosProxyConfigToUrl(proxyConfig: AxiosProxyConfig): string {
     return parseProxyToUrl(axiosProxyConfigToProxy(proxyConfig));
+}
+
+export function isEqualProxies(p1: Proxy, p2: Proxy): boolean {
+    return (
+        p1.protocol === p2.protocol
+        && p1.port === p2.port
+        && p1.host === p2.host
+    );
 }

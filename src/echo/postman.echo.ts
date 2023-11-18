@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { SocksProxyAgent } from 'socks-proxy-agent';
-import { axiosProxyConfigToUrl } from '../utils';
+import { axiosProxyConfigToUrl } from '~/utils';
 import { Echo, EchoResponse } from './Echo';
 
 interface PostmanEchoResponse {
