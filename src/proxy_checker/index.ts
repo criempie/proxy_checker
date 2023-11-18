@@ -3,6 +3,7 @@ import { RequestHandler } from 'express';
 import fs from 'fs';
 import readline from 'readline';
 import { Cache } from '~/cache';
+import { DadjokesOnlineEcho } from '~/echo/dadjokes-online.echo';
 import { Echo, EchoResponse } from '~/echo/Echo';
 import { PostmanEcho } from '~/echo/postman.echo';
 import { Logger } from '~/logger';
@@ -10,7 +11,7 @@ import { ProxyCheckResult } from '~/proxy_checker/types';
 import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
 import { AddEndpointInterface } from '~/server/types';
 import { Proxy } from '~/types';
-import { parseProxyToUrl, parseUrlToProxy } from '~/utils';
+import { deleteDuplicates, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';
 
 export class ProxyChecker {
     private _logger: Logger;
@@ -22,7 +23,7 @@ export class ProxyChecker {
 
     constructor() {
         this._logger = new Logger('ProxyChecker');
-        this._echo = new PostmanEcho();
+        this._echo = new DadjokesOnlineEcho();
     }
 
     public async check(proxy: Proxy): Promise<ProxyCheckResult> {
@@ -92,19 +93,21 @@ export class ProxyChecker {
 
     private _getProxiesEndpointHandler: RequestHandler<{}, unknown, unknown> = async (req, res) => {
         if (this.proxies_cache.isExpired || this.proxies_cache.data!.length < 4) {
-            const working_proxies: Proxy[] = [];
+            let working_proxies: Proxy[] = [];
 
-            const saved_proxies = await this._loadProxiesFromFile();
-            const validated_saved_proxies = await this._validateProxies(saved_proxies.proxies);
+            const saved_proxies = await this._loadProxiesFromFile().then((r) => r.proxies);
+            const validated_saved_proxies = await this._validateProxies(saved_proxies);
 
             working_proxies.push(...validated_saved_proxies);
 
-            if (validated_saved_proxies.length < 4) {
+            if (validated_saved_proxies.length < 10) {
                 const loaded_proxies = await FreeProxyListNet.load();
                 const validated_loaded_proxies = await this._validateProxies(loaded_proxies);
 
                 working_proxies.push(...validated_loaded_proxies);
             }
+
+            working_proxies = deleteDuplicates(working_proxies, isEqualProxies);
 
             this.proxies_cache.update(working_proxies);
             this._saveProxiesToFile(working_proxies);

@@ -61,3 +61,11 @@ export function isEqualProxies(p1: Proxy, p2: Proxy): boolean {
         && p1.host === p2.host
     );
 }
+
+export function deleteDuplicates<T>(arr1: T[], comparator: (item1: T, item2: T) => boolean): T[] {
+    return arr1.filter((item1, i, self) => {
+        return i === self.findIndex((item2) => {
+            return comparator(item1, item2);
+        });
+    });
+}
