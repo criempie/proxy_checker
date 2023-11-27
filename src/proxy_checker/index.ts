@@ -12,18 +12,20 @@ import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
 import { AddEndpointInterface } from '~/server/types';
 import { Proxy } from '~/types';
 import { deleteDuplicates, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';
+import { env } from 'process';
 
 export class ProxyChecker {
     private _logger: Logger;
     private _echo: Echo;
 
     private static FILES_DIR = appRootPath.path + '/files/';
+    private static MIN_COUNT_CACHED_PROXIES = 8;
 
-    private proxies_cache = new Cache<Proxy[]>(60 * 1000);
+    private proxies_cache = new Cache<Proxy[]>(+env.PROXY_CACHE_TTL);
 
     constructor() {
         this._logger = new Logger('ProxyChecker');
-        this._echo = new DadjokesOnlineEcho();
+        this._echo = new PostmanEcho();
     }
 
     public async check(proxy: Proxy): Promise<ProxyCheckResult> {
@@ -92,7 +94,7 @@ export class ProxyChecker {
     };
 
     private _getProxiesEndpointHandler: RequestHandler<{}, unknown, unknown> = async (req, res) => {
-        if (this.proxies_cache.isExpired || this.proxies_cache.data!.length < 4) {
+        if (this.proxies_cache.isExpired || this.proxies_cache.data!.length < ProxyChecker.MIN_COUNT_CACHED_PROXIES) {
             let working_proxies: Proxy[] = [];
 
             const saved_proxies = await this._loadProxiesFromFile().then((r) => r.proxies);
@@ -100,7 +102,7 @@ export class ProxyChecker {
 
             working_proxies.push(...validated_saved_proxies);
 
-            if (validated_saved_proxies.length < 10) {
+            if (validated_saved_proxies.length < ProxyChecker.MIN_COUNT_CACHED_PROXIES) {
                 const loaded_proxies = await FreeProxyListNet.load();
                 const validated_loaded_proxies = await this._validateProxies(loaded_proxies);
 
