@@ -97,7 +97,10 @@ export class ProxyChecker {
         if (this.proxies_cache.isExpired || this.proxies_cache.data!.length < ProxyChecker.MIN_COUNT_CACHED_PROXIES) {
             let working_proxies: Proxy[] = [];
 
-            const saved_proxies = await this._loadProxiesFromFile().then((r) => r.proxies);
+            const saved_proxies = await this._loadProxiesFromFile()
+            .then((r) => r.proxies)
+            .catch(() => [] as Proxy[]);
+
             const validated_saved_proxies = await this._validateProxies(saved_proxies);
 
             working_proxies.push(...validated_saved_proxies);
@@ -163,7 +166,7 @@ export class ProxyChecker {
         writer.end();
     }
 
-    private async _loadProxiesFromFile(): Promise<{ last_update: number, proxies: Proxy[] }> {
+    private _loadProxiesFromFile(): Promise<{ last_update: number, proxies: Proxy[] }> {
         /**
          * It is necessary, because using the usual "return" function "gets stuck" when an error occurs.
          * With Promise reject, the function terminates on error.
@@ -185,24 +188,30 @@ export class ProxyChecker {
             let last_update: number = 0;
             const proxies: Proxy[] = [];
 
-            let isFirstLine = true;
-            for await (const line of rl) {
-                const _line = line.trim();
+            try {
+                let isFirstLine = true;
+                for await (const line of rl) {
+                    const _line = line.trim();
 
-                if (isFirstLine) {
-                    last_update = (new Date(_line)).getTime();
-                    isFirstLine = false;
-                    continue;
-                }
+                    if (isFirstLine) {
+                        last_update = (new Date(_line)).getTime();
+                        isFirstLine = false;
+                        continue;
+                    }
 
-                try {
-                    const proxy = parseUrlToProxy(_line);
-                    proxies.push(proxy);
-                } catch (e) {
-                    if (e instanceof Error) {
-                        logger.error(e.message, _line);
+                    try {
+                        const proxy = parseUrlToProxy(_line);
+                        proxies.push(proxy);
+                    } catch (e) {
+                        if (e instanceof Error) {
+                            logger.error(e.message, _line);
+                        }
                     }
                 }
+            } catch (e) {
+                if (e instanceof Error) {
+                    reject(e.message);
+                } else throw e;
             }
 
             resolve({
