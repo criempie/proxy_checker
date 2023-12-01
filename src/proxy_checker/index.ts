@@ -1,9 +1,9 @@
 import appRootPath from 'app-root-path';
 import { RequestHandler } from 'express';
 import fs from 'fs';
+import { env } from 'process';
 import readline from 'readline';
 import { Cache } from '~/cache';
-import { DadjokesOnlineEcho } from '~/echo/dadjokes-online.echo';
 import { Echo, EchoResponse } from '~/echo/Echo';
 import { PostmanEcho } from '~/echo/postman.echo';
 import { Logger } from '~/logger';
@@ -12,7 +12,6 @@ import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
 import { AddEndpointInterface } from '~/server/types';
 import { Proxy } from '~/types';
 import { deleteDuplicates, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';
-import { env } from 'process';
 
 export class ProxyChecker {
     private _logger: Logger;
@@ -43,10 +42,11 @@ export class ProxyChecker {
                     timeout: 4000,
                 });
             } else {
-                echo_data = await this._echo.bySocks({
+                this._logger.error(`protocol ${ proxy.protocol } not supported`);
+                return {
+                    availability: true,
                     proxy,
-                    timeout: 4000,
-                });
+                };
             }
 
             this._logger.happy(`Proxy ${ Logger.makeUnderline(parseProxyToUrl(proxy)) } is working`);

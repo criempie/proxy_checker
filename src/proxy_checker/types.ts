@@ -5,3 +5,8 @@ export interface ProxyCheckResult {
     proxy: Proxy,
     // anonymous: boolean,
 }
+
+export interface LoadedProxies {
+    last_update: number,
+    proxies: Proxy[],
+}

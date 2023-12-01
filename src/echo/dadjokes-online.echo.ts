@@ -1,7 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { SocksProxyAgent } from 'socks-proxy-agent';
 import { Echo, EchoResponse } from '~/echo/Echo';
-import { axiosProxyConfigToUrl } from '~/utils';
 
 interface DadjokesEchoResponse {
     RequestEcho: {
@@ -35,22 +33,22 @@ export class DadjokesOnlineEcho extends Echo {
         return Mapper.toEchoResponse(data);
     }
 
-    public async bySocks(options: AxiosRequestConfig = {}): Promise<EchoResponse> {
-        const proxy = options.proxy;
-        const agent = proxy
-            ? new SocksProxyAgent(axiosProxyConfigToUrl(proxy))
-            : null;
-
-        const data = await axios
-        .get<DadjokesEchoResponse>('https://dadjokes.online/', {
-            ...options,
-            httpsAgent: agent,
-            proxy: false,
-        })
-        .then((r) => r.data);
-
-        return Mapper.toEchoResponse(data);
-    }
+    // public async bySocks(options: AxiosRequestConfig = {}): Promise<EchoResponse> {
+    //     const proxy = options.proxy;
+    //     const agent = proxy
+    //         ? new SocksProxyAgent(axiosProxyConfigToUrl(proxy))
+    //         : null;
+    //
+    //     const data = await axios
+    //     .get<DadjokesEchoResponse>('https://dadjokes.online/', {
+    //         ...options,
+    //         httpsAgent: agent,
+    //         proxy: false,
+    //     })
+    //     .then((r) => r.data);
+    //
+    //     return Mapper.toEchoResponse(data);
+    // }
 
 }
 

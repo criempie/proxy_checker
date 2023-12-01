@@ -9,5 +9,5 @@ export abstract class Echo {
 
     public abstract byHttps(options?: AxiosRequestConfig): Promise<EchoResponse>;
 
-    public abstract bySocks(options?: AxiosRequestConfig): Promise<EchoResponse>;
+    // public abstract bySocks(options?: AxiosRequestConfig): Promise<EchoResponse>;
 }
