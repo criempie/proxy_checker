@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
+import { env } from 'process';
+import { Cache } from '~/cache';
 import { Logger } from '~/logger';
 import { Proxy } from '~/types';
 import { common_headers } from '../common_headers';
@@ -7,11 +9,18 @@ import { common_headers } from '../common_headers';
 export class FreeProxyListNet {
     private static _url = 'https://free-proxy-list.net/';
     private static _logger = new Logger('parser free-proxy-list.net');
+    private static _cache: Cache<Proxy[]> = new Cache<Proxy[]>(+env.PROXY_CACHE_TTL);
 
     public static async load(): Promise<Proxy[]> {
+        if (!FreeProxyListNet._cache.isExpired) return FreeProxyListNet._cache.data!;
+
         return FreeProxyListNet._fetchPage()
         .then((page) => {
             return FreeProxyListNet._parsePage(page);
+        })
+        .then((proxies) => {
+            this._cache.update(proxies);
+            return proxies;
         })
         .catch((e) => {
             if (e instanceof Error) {
