@@ -1,6 +1,4 @@
 import dotenv from 'dotenv-safe';
-import { ProxyChecker } from '~/proxy_checker';
-import { WebsocketChecker } from '~/proxy_checker/websocket.checker';
 
 // It is necessary that process.env is available in all files.
 dotenv.config();
@@ -9,6 +7,8 @@ dotenv.config();
 // think that environment variables are undefined (dotenv-safe catches them).
 import {} from './types/env';
 
+import { ProxyChecker } from '~/proxy_checker';
+import { WebsocketChecker } from '~/proxy_checker/websocket.checker';
 import { env } from 'process';
 import { Server } from '~/server';
 

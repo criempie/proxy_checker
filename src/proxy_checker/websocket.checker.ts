@@ -6,17 +6,20 @@ import { Cache } from '~/cache';
 import { WEBSOCKET_PROXIES_FILE_PATH, WEBSOCKET_TEST_URL } from '~/config';
 import { FileSystem } from '~/FileSystem';
 import { Logger } from '~/logger';
+import { WebsocketError } from '~/proxy_checker/errors';
 import { LoadedProxies, ProxyCheckResult } from '~/proxy_checker/types';
 import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
-import { AddEndpointInterface } from '~/server/types';
+import { AddEndpointInterface, ServerError } from '~/server/types';
 import { Proxy } from '~/types';
-import { deleteDuplicates, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';
+import { deleteDuplicates, divideArrayIntoBatches, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';
 
 export class WebsocketChecker {
     private _logger: Logger;
     private _proxies_cache: Cache<Proxy[]>;
 
     private static MIN_COUNT_PROXIES = 4;
+    private static CHECK_PROXY_BASE_TIMEOUT = 4000;
+    private static MAX_CHECK_BATCH = 25;
 
     constructor() {
         this._logger = new Logger('WebsocketProxyChecker');
@@ -37,7 +40,7 @@ export class WebsocketChecker {
         ];
     }
 
-    public check(proxy: Proxy): Promise<ProxyCheckResult> {
+    public check(proxy: Proxy, timeout: number): Promise<ProxyCheckResult> {
         return new Promise((resolve, reject) => {
             const proxy_url = parseProxyToUrl(proxy);
             let agent;
@@ -45,101 +48,121 @@ export class WebsocketChecker {
             if (proxy.protocol.startsWith('http')) {
                 agent = new HttpsProxyAgent({
                     proxy: proxy_url,
-                    timeout: 4000,
-                    keepAlive: true,
-                    keepAliveMsecs: 4000,
-                    sessionTimeout: 4000,
+                    timeout,
                 });
             } else {
-                this._logger.error(`protocol ${ proxy.protocol } is not supported`);
-                resolve({ availability: false, proxy });
+                reject(new Error(`protocol ${ proxy.protocol } not supported`));
             }
 
             const ws = new WebSocket(WEBSOCKET_TEST_URL, {
                 agent,
-                timeout: 4000,
-                handshakeTimeout: 4000,
-                sessionTimeout: 4000,
+                timeout,
             });
 
-            ws.on('error', (e) => {
-                this._logger.error(proxy_url, e.message);
+            const timer = setTimeout(() => {
+                ws.close();
+                reject(new Error('timeout'));
+            }, timeout + WebsocketChecker.CHECK_PROXY_BASE_TIMEOUT);
 
-                resolve({ availability: false, proxy });
+            ws.on('error', (e) => {
+                clearTimeout(timer);
+                reject(new WebsocketError(e.message));
+            });
+
+            ws.on('close', (c, r) => {
+                clearTimeout(timer);
+                reject(new WebsocketError(r.toString()));
             });
 
             ws.on('unexpected-response', (req, res) => {
-                this._logger.error(proxy_url, res.statusCode);
-
-                resolve({ availability: false, proxy });
+                clearTimeout(timer);
+                reject(new WebsocketError(`unexpected-response ${ res.statusCode }`));
             });
 
             ws.on('open', () => {
-                this._logger.happy(proxy_url, ' proxy work');
                 ws.close();
-
+                clearTimeout(timer);
                 resolve({ availability: true, proxy });
             });
         });
     }
 
-    private async _validateProxies(proxies: Proxy[]): Promise<Proxy[]> {
-        const results = await Promise.allSettled(proxies.map(this.check.bind(this)));
+    private async _validateProxies(proxies: Proxy[], _logger?: Logger): Promise<Proxy[]> {
+        const loggerCounter = (_logger ?? this._logger).createCounter(proxies.length);
 
-        this._logger.log(results.find((r) => r.status === 'rejected'));
+        const check_timeout = WebsocketChecker.CHECK_PROXY_BASE_TIMEOUT;
 
-        return results.reduce((acc, res) => {
-            if (res.status === 'fulfilled') {
-                if (res.value.availability) {
-                    acc.push(res.value.proxy);
-                }
-            }
+        const validated: Proxy[] = [];
+        const promises = proxies.map((p) => {
+            return this.check(p, check_timeout)
+            .then((r) => {
+                if (!r.availability) return;
 
-            return acc;
-        }, [] as Proxy[]);
+                loggerCounter.happy(parseProxyToUrl(r.proxy), 'works');
+                validated.push(r.proxy);
+            })
+            .catch((e) => {
+                loggerCounter.error(parseProxyToUrl(p), ':', e.message ?? e);
+            });
+        });
+
+        return Promise.all(promises).then(() => validated);
     }
 
-    private _checkEndpointHandler: RequestHandler<{}, unknown, string[]> = async (req, res) => {
-        this._logger.log(`validating ${ req.body.length } proxies...`);
-
-        const result = await this._validateProxies(req.body.map(parseUrlToProxy));
-
-        this._logger.log(`available ${ result.length } proxies`);
-
-        res.status(200);
+    private _checkEndpointHandler: RequestHandler<{}, Proxy[] | ServerError, string[]> = async (req, res) => {
         res.appendHeader('content-type', 'application/json');
 
-        res.send(result);
+        try {
+            const result = await this._validateProxies(req.body.map(parseUrlToProxy));
+
+            res.status(200);
+            res.send(result);
+
+        } catch (e) {
+            if (e instanceof Error) {
+                res.status(500);
+                res.send({ msg: e.message });
+            } else res.end();
+        }
     };
 
     private _getProxiesEndpointHandler: RequestHandler<{}, unknown, unknown> = async (req, res) => {
+        const logger = this._logger.createChild('getProxies');
+
         if (this._proxies_cache.isExpired || this._proxies_cache.data!.length < WebsocketChecker.MIN_COUNT_PROXIES) {
             let working_proxies: Proxy[] = [];
 
             const saved_proxies = await this._loadProxiesFromFile()
-            .then((r) => r.proxies);
+            .then((r) => {
+                logger.happy(`loaded ${ r.proxies.length } from file`);
 
-            this._logger.log('validating saved proxies...');
+                return r.proxies;
+            })
+            .catch((e) => {
+                if (e instanceof Error) {
+                    logger.warning('failed loading proxies file:', e.message);
+                } else logger.error(e);
 
-            const validated_saved_proxies = await this._validateProxies(saved_proxies);
+                return [] as Proxy[];
+            });
 
-            this._logger.log(`working ${ validated_saved_proxies.length } saved proxies`);
-
+            const validated_saved_proxies = await this._validateProxies(saved_proxies, logger);
             working_proxies.push(...validated_saved_proxies);
 
             if (validated_saved_proxies.length < WebsocketChecker.MIN_COUNT_PROXIES) {
                 const loaded_proxies = await FreeProxyListNet.load();
+                const batches = divideArrayIntoBatches(loaded_proxies, WebsocketChecker.MAX_CHECK_BATCH);
 
-                this._logger.log(`validating ${ loaded_proxies.length } loaded from parser proxies...`);
-
-                const validated_loaded_proxies = await this._validateProxies(loaded_proxies);
-
-                this._logger.log(`working ${ validated_loaded_proxies.length } loaded proxies`);
-
-                working_proxies.push(...validated_loaded_proxies);
+                for (let i = 0; i < batches.length; i++) {
+                    const _logger = logger.createChild(`batch ${ i + 1 }/${ batches.length }`);
+                    const validated_loaded_proxies = await this._validateProxies(batches[i], _logger);
+                    working_proxies.push(...validated_loaded_proxies);
+                }
             }
 
             working_proxies = deleteDuplicates(working_proxies, isEqualProxies);
+
+            logger.happy(working_proxies.length, 'working proxies');
 
             this._proxies_cache.update(working_proxies);
             this._saveProxiesToFile(working_proxies);
@@ -152,21 +175,10 @@ export class WebsocketChecker {
     };
 
     private async _loadProxiesFromFile(): Promise<LoadedProxies> {
-        try {
-            const stat = await FileSystem.getStatOfFile(WEBSOCKET_PROXIES_FILE_PATH);
-            const proxies = await FileSystem.loadFromFile<Proxy[]>(WEBSOCKET_PROXIES_FILE_PATH);
+        const stat = await FileSystem.getStatOfFile(WEBSOCKET_PROXIES_FILE_PATH);
+        const proxies = await FileSystem.loadFromFile<Proxy[]>(WEBSOCKET_PROXIES_FILE_PATH);
 
-            this._logger.happy(`loaded ${ proxies.length } proxies from file`);
-
-            return { last_update: stat.mtime.getTime(), proxies };
-        } catch (e) {
-            if (e instanceof Error) {
-                this._logger.error('failed to load proxies from file');
-                this._logger.error(e.message, '\r\n');
-
-                return { last_update: 0, proxies: [] };
-            } else throw e;
-        }
+        return { last_update: stat.mtime.getTime(), proxies };
     }
 
     private async _saveProxiesToFile(proxies: Proxy[]): Promise<void> {

@@ -69,3 +69,16 @@ export function deleteDuplicates<T>(arr1: T[], comparator: (item1: T, item2: T) 
         });
     });
 }
+
+export function divideArrayIntoBatches<T>(array: T[], batchSize: number): T[][] {
+    const count = Math.ceil(array.length / batchSize);
+    const _array = array.slice();
+
+    const batches: T[][] = [];
+
+    for (let i = 0; i < count; i++) {
+        batches.push(_array.splice(0, batchSize));
+    }
+
+    return batches;
+}

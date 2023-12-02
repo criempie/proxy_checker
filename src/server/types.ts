@@ -7,3 +7,7 @@ export interface AddEndpointInterface {
     method: HttpMethod,
     handler: RequestHandler,
 }
+
+export interface ServerError {
+    msg: string,
+}
