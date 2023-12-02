@@ -45,6 +45,10 @@ export class Logger {
         Logger._log(this._fullLocation, messages, Logger._chalk.greenBright);
     }
 
+    public warning(...messages: any): void {
+        Logger._log(this._fullLocation, messages, Logger._chalk.yellow);
+    }
+
     protected static _log(locations: string | string[], messages: any, colorFn?: ChalkFunction): void {
         const _messages = messages.map((m: any) => {
             let msg = m;
