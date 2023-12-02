@@ -8,6 +8,10 @@ export class Cache<T> {
      * @param {number} ttl - milliseconds
      */
     constructor(ttl: number,) {
+        if (typeof ttl !== 'number' || isNaN(ttl)) {
+            throw new Error('ttl is not a number');
+        }
+
         this._ttl = ttl;
     }
 
