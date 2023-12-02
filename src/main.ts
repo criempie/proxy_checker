@@ -7,13 +7,13 @@ dotenv.config();
 // think that environment variables are undefined (dotenv-safe catches them).
 import {} from './types/env';
 
-import { ProxyChecker } from '~/proxy_checker';
+import { HttpProxyChecker } from '~/proxy_checker/http.checker';
 import { WebsocketChecker } from '~/proxy_checker/websocket.checker';
 import { env } from 'process';
 import { Server } from '~/server';
 
 const server = new Server(+env.PORT);
-const proxy_checker = new ProxyChecker();
+const proxy_checker = new HttpProxyChecker();
 const proxy_checker_websocket = new WebsocketChecker();
 
 proxy_checker.getEndpoints()
