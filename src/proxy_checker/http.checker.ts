@@ -10,7 +10,7 @@ import { PostmanEcho } from '~/echo/postman.echo';
 import { FileSystem } from '~/FileSystem';
 import { Logger } from '~/logger';
 import { LoadedProxies, ProxyCheckResult } from '~/proxy_checker/types';
-import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
+import { FreeProxyListNet } from '~/proxy_parser/level_0/free-proxy-list.net';
 import { AddEndpointInterface } from '~/server/types';
 import { Proxy } from '~/types';
 import { deleteDuplicates, divideArrayIntoBatches, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';

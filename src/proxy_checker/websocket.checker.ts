@@ -8,7 +8,7 @@ import { FileSystem } from '~/FileSystem';
 import { Logger } from '~/logger';
 import { WebsocketError } from '~/proxy_checker/errors';
 import { LoadedProxies, ProxyCheckResult } from '~/proxy_checker/types';
-import { FreeProxyListNet } from '~/proxy_parser/api/free-proxy-list.net';
+import { FreeProxyListNet } from '~/proxy_parser/level_0/free-proxy-list.net';
 import { AddEndpointInterface, ServerError } from '~/server/types';
 import { Proxy } from '~/types';
 import { deleteDuplicates, divideArrayIntoBatches, isEqualProxies, parseProxyToUrl, parseUrlToProxy } from '~/utils';

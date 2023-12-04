@@ -17,9 +17,9 @@ export class FreeProxyListNet {
         return FreeProxyListNet._fetchPage()
         .then(async (page) => {
             const parsed = await FreeProxyListNet._parsePage(page);
-            this._cache.update(parsed);
+            FreeProxyListNet._cache.update(parsed);
 
-            return this._cache.data!;
+            return FreeProxyListNet._cache.data!;
         })
         .catch((e) => {
             if (e instanceof Error) {
