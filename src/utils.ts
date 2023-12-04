@@ -1,4 +1,5 @@
 import { AxiosProxyConfig } from 'axios';
+import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
 import { Proxy } from '~/types';
 
 export function parseProxyToUrl(proxy: Proxy): string {
@@ -81,4 +82,14 @@ export function divideArrayIntoBatches<T>(array: T[], batchSize: number): T[][] 
     }
 
     return batches;
+}
+
+export function getSuitableAgent(url: string, proxy: Proxy): typeof HttpProxyAgent | typeof HttpsProxyAgent {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.protocol === 'http:') return HttpProxyAgent;
+    else if (parsedUrl.protocol === 'https:') return HttpsProxyAgent;
+    else if (parsedUrl.protocol.startsWith('ws')) return HttpsProxyAgent;
+
+    else throw new Error(`protocol ${ parsedUrl.protocol } not supported`);
 }
