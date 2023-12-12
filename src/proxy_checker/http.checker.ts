@@ -7,7 +7,7 @@ import { Echo } from '~/echo/Echo';
 import { PostmanEcho } from '~/echo/postman.echo';
 import { FileSystem } from '~/FileSystem';
 import { Logger } from '~/logger';
-import { LoadedProxies, ProxyCheckResult } from '~/proxy_checker/types';
+import { CheckedProxy, LoadedProxies, ProxyCheckResult } from '~/proxy_checker/types';
 import { FreeProxyListNet } from '~/proxy_parser/level_0/free-proxy-list.net';
 import { AddEndpointInterface, ServerError } from '~/server/types';
 import { Proxy } from '~/types';
@@ -27,6 +27,12 @@ export class HttpProxyChecker {
 
     // The number of concurrently validated proxies.
     private static MAX_CHECK_BATCH = 25;
+
+    // The number of checks (to determine the stability of the proxy).
+    private static CHECK_ATTEMPTS_COUNT = 8;
+
+    // Minimal proxy stability. The others will be discarded. 0.0 - 1.0.
+    private static MIN_PROXY_STABILITY = 0.6;
 
     private _proxies_cache = new Cache<Proxy[]>(+env.PROXY_CACHE_TTL);
 
@@ -93,7 +99,18 @@ export class HttpProxyChecker {
                 for (let i = 0; i < batches.length; i++) {
                     this._logger.createChild(`Batch ${ i + 1 }/${ batches.length }`).log('Processing...');
 
-                    await this._validateProxiesByUrl(batches[i], req.query.url)
+                    await this._validateProxies(batches[i], HttpProxyChecker.CHECK_ATTEMPTS_COUNT, req.query.url)
+                    .then((proxies) => {
+                        this._logger.log(proxies);
+
+                        return proxies.reduce((acc, p) => {
+                            if (p.stability >= HttpProxyChecker.MIN_PROXY_STABILITY) {
+                                acc.push(p.proxy);
+                            }
+
+                            return acc;
+                        }, [] as Proxy[]);
+                    })
                     .then((proxies) => {
                         result = proxies;
                     })
@@ -183,7 +200,23 @@ export class HttpProxyChecker {
         .then((r) => r.proxies)
         .catch(() => [] as Proxy[]);
 
-        const validated_saved_proxies = await this._validateProxies(saved_proxies);
+        this._logger.log(`Loaded ${ saved_proxies.length } proxies from file.`);
+
+        const validated_saved_proxies = await this._validateProxies(saved_proxies,
+            HttpProxyChecker.CHECK_ATTEMPTS_COUNT)
+        .then((proxies) => {
+            return proxies.reduce((acc, p) => {
+                if (p.stability >= HttpProxyChecker.MIN_PROXY_STABILITY) {
+                    acc.push(p.proxy);
+                }
+
+                return acc;
+            }, [] as Proxy[]);
+        });
+
+        this._logger.log(
+            `${ validated_saved_proxies.length } of them have stability greater than ${ HttpProxyChecker.MIN_PROXY_STABILITY }.`
+        );
 
         working_proxies.push(...validated_saved_proxies);
 
@@ -191,54 +224,82 @@ export class HttpProxyChecker {
             const loaded_proxies = await FreeProxyListNet.load();
             const batches = divideArrayIntoBatches(loaded_proxies, HttpProxyChecker.MAX_CHECK_BATCH);
 
+            this._logger.log(`Loaded ${ loaded_proxies.length } proxies from FreeProxyListNet parser.`);
+            this._logger.log(
+                `They are divided into ${ batches.length } parties of ${ HttpProxyChecker.MAX_CHECK_BATCH } proxies.`
+            );
+
             for (let i = 0; i < batches.length; i++) {
                 this._logger.createChild(`Batch ${ i + 1 }/${ batches.length }`).log('Processing...');
-                const validated_loaded_proxies = await this._validateProxies(batches[i]);
+                const validated_loaded_proxies = await this._validateProxies(
+                    batches[i],
+                    HttpProxyChecker.CHECK_ATTEMPTS_COUNT
+                )
+                .then((proxies) => {
+                    return proxies.reduce((acc, p) => {
+                        if (p.stability >= HttpProxyChecker.MIN_PROXY_STABILITY) {
+                            acc.push(p.proxy);
+                        }
+
+                        return acc;
+                    }, [] as Proxy[]);
+                });
+
+                this._logger.log(
+                    `${ validated_loaded_proxies.length } of them have stability greater than ${ HttpProxyChecker.MIN_PROXY_STABILITY }.`
+                );
+
                 working_proxies.push(...validated_loaded_proxies);
             }
         }
 
-        return deleteDuplicates(working_proxies, isEqualProxies);
+        const working_proxy_without_duplicates = deleteDuplicates(working_proxies, isEqualProxies);
+
+        this._logger.log(
+            `In total, there were ${ working_proxy_without_duplicates.length } working proxies with stability above ${ HttpProxyChecker.MIN_PROXY_STABILITY }`
+        );
+
+        return working_proxy_without_duplicates;
     }
 
-    private async _validateProxies(proxies: Proxy[]): Promise<Proxy[]> {
-        const loggerCounter = this._logger.createChild('Validation').createCounter(proxies.length);
+    private async _validateProxies(proxies: Proxy[], attempts: number = 1, url?: string): Promise<CheckedProxy[]> {
+        const proxies_success: Record<string, { success: number, proxy: Proxy }> = proxies.reduce((acc: any, p) => {
+            acc[parseProxyToUrl(p)] = { proxy: p, success: 0 };
+            return acc;
+        }, {});
 
-        const validated: Proxy[] = [];
-        const promises = proxies.map((p) => {
-            return this.checkByEcho(p)
-            .then((r) => {
-                if (!r.availability) return;
+        for (let i = 0; i < attempts; i++) {
+            const logger = this._logger.createChild(`Validation attempt ${ i + 1 }/${ attempts }`);
 
-                loggerCounter.happy(parseProxyToUrl(r.proxy), 'works');
-                validated.push(r.proxy);
-            })
-            .catch((e) => {
-                loggerCounter.error(parseProxyToUrl(p) + ':', e.message ?? e);
+            logger.log(`Processing ${ proxies.length } proxies...`);
+
+            const promises = proxies.map((p) => {
+                let checkPromise: Promise<ProxyCheckResult>;
+
+                if (url) checkPromise = this.checkByUrl(p, url);
+                else checkPromise = this.checkByEcho(p);
+
+                return checkPromise;
             });
-        });
 
-        return Promise.all(promises).then(() => validated);
-    }
-
-    private async _validateProxiesByUrl(proxies: Proxy[], url: string): Promise<Proxy[]> {
-        const loggerCounter = this._logger.createChild(`Validation for ${ url }`).createCounter(proxies.length);
-
-        const validated: Proxy[] = [];
-        const promises = proxies.map((p) => {
-            return this.checkByUrl(p, url)
-            .then((r) => {
-                if (!r.availability) return;
-
-                loggerCounter.happy(parseProxyToUrl(r.proxy), 'works');
-                validated.push(r.proxy);
-            })
-            .catch((e) => {
-                loggerCounter.error(parseProxyToUrl(p) + ':', e.message ?? e);
+            await Promise.allSettled(promises)
+            .then((settled) => {
+                settled.forEach((r) => {
+                    if (r.status === 'fulfilled') {
+                        if (r.value.availability) {
+                            proxies_success[parseProxyToUrl(r.value.proxy)].success++;
+                        }
+                    }
+                });
             });
-        });
+        }
 
-        return Promise.all(promises).then(() => validated);
+        return Object.values(proxies_success).map((s) => {
+            return {
+                proxy: s.proxy,
+                stability: +(s.success / attempts).toFixed(2),
+            };
+        });
     }
 
     private async _loadProxiesFromFile(): Promise<LoadedProxies> {
