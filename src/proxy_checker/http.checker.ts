@@ -95,14 +95,15 @@ export class HttpProxyChecker {
 
             if (req.query.url) {
                 const batches = divideArrayIntoBatches(this._proxies_cache.data!, HttpProxyChecker.MAX_CHECK_BATCH);
+                const result_for_url: Proxy[] = [];
+
+                this._logger.log(`Processing proxies for url ${ req.query.url }`);
 
                 for (let i = 0; i < batches.length; i++) {
                     this._logger.createChild(`Batch ${ i + 1 }/${ batches.length }`).log('Processing...');
 
                     await this._validateProxies(batches[i], HttpProxyChecker.CHECK_ATTEMPTS_COUNT, req.query.url)
                     .then((proxies) => {
-                        this._logger.log(proxies);
-
                         return proxies.reduce((acc, p) => {
                             if (p.stability >= HttpProxyChecker.MIN_PROXY_STABILITY) {
                                 acc.push(p.proxy);
@@ -112,12 +113,20 @@ export class HttpProxyChecker {
                         }, [] as Proxy[]);
                     })
                     .then((proxies) => {
-                        result = proxies;
+                        result_for_url.push(...proxies);
+                        this._logger.log(
+                            `${ proxies.length } of them have stability greater than ${ HttpProxyChecker.MIN_PROXY_STABILITY }.`);
                     })
                     .catch((e) => {
                         this._logger.error('Error during validation by url', req.query.url, e?.message ?? e);
                     });
                 }
+
+                this._logger.log(
+                    `In total, there were ${ result_for_url.length } working proxies with stability above ${ HttpProxyChecker.MIN_PROXY_STABILITY }`
+                );
+
+                result = result_for_url;
             }
 
             res.status(200);
